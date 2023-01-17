@@ -1,4 +1,4 @@
-package elliptic2
+package elliptic
 
 import (
 	"encoding/json"
@@ -19,15 +19,15 @@ type CurveDetail struct {
 	Name    string   // the canonical name of the curve
 }
 
-type cd interface {
+// type cd interface {
 
-	IfOnCurve(cp*CurvePoint) bool
-	Mult(cp*CurvePoint, k*big.Int) (ans*CurvePoint)
-	BaseMult(k*big.Int)(ans*CurvePoint)
-	Add(cp1,cp2 *CurvePoint)(ans*CurvePoint)
-	Double(cp *CurvePoint)(ans*CurvePoint)
-	polynomial(x *big.Int) *big.Int
-}
+// 	IfOnCurve(cp*CurvePoint) bool
+// 	Mult(cp*CurvePoint, k*big.Int) (ans*CurvePoint)
+// 	BaseMult(k*big.Int)(ans*CurvePoint)
+// 	Add(cp1,cp2 *CurvePoint)(ans*CurvePoint)
+// 	Double(cp *CurvePoint)(ans*CurvePoint)
+// 	polynomial(x *big.Int) *big.Int
+// }
 
 //get x^3 - 3x + b
 func (curve *CurveDetail) polynomial(x *big.Int)*big.Int {

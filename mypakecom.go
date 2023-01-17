@@ -1,58 +1,68 @@
 package main
 
 import (
-	"crypto/elliptic"
+	"elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"math/big"
 )
-type Point struct {
-	X, Y *big.Int
+
+type cd interface {
+	IfOnCurve(cp*elliptic.CurvePoint) bool
+	Mult(cp*elliptic.CurvePoint, k*big.Int) (ans*elliptic.CurvePoint)
+	BaseMult(k*big.Int)(ans*elliptic.CurvePoint)
+	Add(cp1,cp2 *elliptic.CurvePoint)(ans*elliptic.CurvePoint)
+	Double(cp *elliptic.CurvePoint)(ans*elliptic.CurvePoint)
+	polynomial(x *big.Int) *big.Int
+	Init()
 }
-type EllipticCurve interface {
-	Add(x1, y1, x2, y2 *big.Int) (x3, y3 *big.Int)
-	ScalarMult(x1, y1 *big.Int, k []byte) (x2, y2 *big.Int)
-	ScalarBaseMult(k []byte) (x, y *big.Int)
-	IsOnCurve(x, y *big.Int) bool
-}
+
 type MyPake struct {
 	//Public
 	character int//0 for Alice, 1 for Bob
-	PubKey1,PubKey2 Point//椭圆曲线上两点
+	PubKey1,PubKey2 *elliptic.CurvePoint//椭圆曲线上两点
 	//Private
-	curve   EllipticCurve
+	curve   *elliptic.CurveDetail
 	mod    *big.Int//椭圆曲线的阶
 	pw      string//pin码
 	RandInt []byte//随机数
-	SendP,RecvP Point
-	w	  Point//g^ab
+	SendP,RecvP *elliptic.CurvePoint
+	w	  *elliptic.CurvePoint//g^ab
 	Session_key []byte//会话密钥
 }
 func (p*MyPake)initPake(cha int,pw string) (err error) {
 	p.character=cha
 	p.pw=pw
-	p.curve=elliptic.P256()
-	p.mod=elliptic.P256().Params().P
+	p.curve=new(elliptic.CurveDetail)
+	p.curve.Init()
+	p.mod=new(big.Int).Set(p.curve.P)
 	p.RandInt=make([]byte,32)
 	_,err=rand.Read(p.RandInt)
 	if err!=nil{
 		err=fmt.Errorf("rand.Read failed:%v",err)
 		return
 	}
-	p.PubKey1.X,_=new(big.Int).SetString("58731067273573857778279948794057417392601156383472860786093400685735140761651",0)
-	p.PubKey1.Y,_=new(big.Int).SetString("93386138870050199662691817665795322475134119398187949273982911861062556881179",0)
-	if p.curve.IsOnCurve(p.PubKey1.X,p.PubKey1.Y)==false{
+	p.PubKey1=new(elliptic.CurvePoint)
+	p.PubKey1.X,_=new(big.Int).SetString("9932447698367082640257483044363349348872996515059959157560457878187",10)
+	p.PubKey1.Y,_=new(big.Int).SetString("8388720915886119779160748420876218981755600630586628957892069627840",10)
+	if p.curve.IfOnCurve(p.PubKey1)==false {
 		err=fmt.Errorf("PubKey1 is not on curve")
 		return
 	}
-	p.PubKey2.X,_=new(big.Int).SetString("103420669720391795230273066371051314480768113876393771228169739831565483091666",0)
-	p.PubKey2.Y,_=new(big.Int).SetString("55370253487829929306938359725045466094283998540384556311325748840724747949635",0)
-	if p.curve.IsOnCurve(p.PubKey2.X,p.PubKey2.Y)==false{
+	p.PubKey2=new(elliptic.CurvePoint)
+	p.PubKey2.X,_=new(big.Int).SetString("18768295268253505552656947459233887712743899097505888838490343948275",10)
+	p.PubKey2.Y,_=new(big.Int).SetString("1984358974232747532252704275995517270897127169579808754393510872439",10)
+	if p.curve.IfOnCurve(p.PubKey2)==false {
 		err=fmt.Errorf("PubKey2 is not on curve")
 		return
 	}
+	p.SendP=new(elliptic.CurvePoint)
+	p.RecvP=new(elliptic.CurvePoint)
+	p.w=new(elliptic.CurvePoint)
+	p.Session_key=make([]byte,32)
+
 	return
 }
 func GetPakes(pw string)(p1,p2 *MyPake,err error) {
@@ -72,7 +82,8 @@ func GetPakes(pw string)(p1,p2 *MyPake,err error) {
 	return
 }
 func (p*MyPake)UpdateSelf()(err error){
-	var temp1,temp2,PublicKey Point
+	var temp1,temp2,PublicKey *elliptic.CurvePoint
+	PublicKey=new(elliptic.CurvePoint)
 	if p.character!=0{
 		PublicKey.X=p.PubKey1.X
 		PublicKey.Y=p.PubKey1.Y
@@ -81,13 +92,17 @@ func (p*MyPake)UpdateSelf()(err error){
 		PublicKey.Y=p.PubKey2.Y
 	}
 
-	temp1.X,temp1.Y=p.curve.ScalarMult(PublicKey.X,PublicKey.Y,[]byte(p.pw))
-	temp2.X,temp2.Y=p.curve.ScalarBaseMult(p.RandInt)
-	p.SendP.X,p.SendP.Y=p.curve.Add(temp1.X,temp1.Y,temp2.X,temp2.Y)
+	temp1=p.curve.Mult(PublicKey,[]byte(p.pw))
+	temp2=p.curve.BaseMult(p.RandInt)
+	data,err:=json.Marshal(p.curve.Add(temp1,temp2))
+	if err!=nil{
+		return
+	}
+	json.Unmarshal(data,&p.SendP)
 	return 
 }
 func (p*MyPake)UpdateOther(bytes []byte)(err error){
-	var qSend *Point
+	var qSend *elliptic.CurvePoint
 	err=json.Unmarshal(bytes,&qSend)
 	if err!=nil{
 		err=fmt.Errorf("json.Unmarshal failed:%v",err)
@@ -95,11 +110,11 @@ func (p*MyPake)UpdateOther(bytes []byte)(err error){
 	}
 	p.RecvP.X=qSend.X
 	p.RecvP.Y=qSend.Y
-	if p.curve.IsOnCurve(p.RecvP.X,p.RecvP.Y)==false{
+	if p.curve.IfOnCurve(p.RecvP)==false{
 		err=fmt.Errorf("RecvP is not on curve")
 		return
 	}
-	var PubKey Point
+	var PubKey = new(elliptic.CurvePoint)
 	if p.character==0{
 		PubKey.X=p.PubKey1.X
 		PubKey.Y=p.PubKey1.Y
@@ -107,12 +122,13 @@ func (p*MyPake)UpdateOther(bytes []byte)(err error){
 		PubKey.X=p.PubKey2.X
 		PubKey.Y=p.PubKey2.Y
 	}	
-	var temp1,temp2,temp3 Point
+	var temp1,temp2,temp3 = new(elliptic.CurvePoint), new(elliptic.CurvePoint), new(elliptic.CurvePoint)
 	temp1.X=qSend.X
 	temp1.Y=new(big.Int).Mod(new(big.Int).Neg(qSend.Y),p.mod)
-	temp2.X,temp2.Y=p.curve.ScalarMult(PubKey.X,PubKey.Y,[]byte(p.pw))
-	temp3.X,temp3.Y=p.curve.Add(temp2.X,temp2.Y,temp1.X,temp1.Y)
-	p.w.X,p.w.Y=p.curve.ScalarMult(temp3.X,temp3.Y,p.RandInt)
+	temp2=p.curve.Mult(PubKey,[]byte(p.pw))
+	temp3=p.curve.Add(temp2,temp1)
+	data,err:=json.Marshal(p.curve.Mult(temp3,p.RandInt))
+	json.Unmarshal(data,p.w)
 	
 	Session:=sha256.New()
 	Session.Write(p.PubKey1.X.Bytes())
