@@ -1,4 +1,4 @@
-package elliptic
+package elliptic2
 
 import (
 	"encoding/json"
@@ -14,28 +14,23 @@ type CurveDetail struct {
 	P       *big.Int // the order of the underlying field
 	N       *big.Int // the order of the base point
 	B       *big.Int // the constant of the curve equation
-	BasePoint JacobianPoint // (x,y) of the base point
+	BasePoint CurvePoint // (x,y) of the base point
 	BitSize int      // the size of the underlying field
 	Name    string   // the canonical name of the curve
 }
 
-type Curve interface {
-	getP()
-	IfOnCurve(cp*CurvePoint) bool
-	Mult(cp*CurvePoint, k*big.Int) 
-	BaseMult(k*big.Int)
-	Add(cp1*CurvePoint, cp2*CurvePoint)
-	Double(cp*CurvePoint)
-}
-type JacobianCurve interface {
+type cd interface {
 
-}
-func (curve *CurveDetail) getP() *big.Int {
-	return curve.P
+	IfOnCurve(cp*CurvePoint) bool
+	Mult(cp*CurvePoint, k*big.Int) (ans*CurvePoint)
+	BaseMult(k*big.Int)(ans*CurvePoint)
+	Add(cp1,cp2 *CurvePoint)(ans*CurvePoint)
+	Double(cp *CurvePoint)(ans*CurvePoint)
+	polynomial(x *big.Int) *big.Int
 }
 
 //get x^3 - 3x + b
-func (curve *CurveDetail) polynomial(x *big.Int) (y *big.Int) {
+func (curve *CurveDetail) polynomial(x *big.Int)*big.Int {
 	xxx := new(big.Int).Mul(x, x)
 	xxx.Mul(xxx, x)
 	x3 := new(big.Int).Lsh(x, 1)
@@ -75,12 +70,12 @@ func (curve *CurveDetail)Jacobian2Curve(jp*JacobianPoint) (cp*CurvePoint) {
 		// cp.X , cp.Y= new(big.Int) , new(big.Int)
 		return
 	}
-	zinv := new(big.Int).ModInverse(jp.Z, curve.P)
-	zinv2 := new(big.Int).Mul(zinv, zinv)
-	cp.X = new(big.Int).Mul(jp.X, zinv2)
+	zin := new(big.Int).ModInverse(jp.Z, curve.P)
+	zin2 := new(big.Int).Mul(zin, zin)
+	cp.X = new(big.Int).Mul(jp.X, zin2)
 	cp.X.Mod(cp.X, curve.P)
-	zinv3 := new(big.Int).Mul(zinv2, zinv)
-	cp.Y = new(big.Int).Mul(jp.Y, zinv3)
+	zin3 := new(big.Int).Mul(zin2, zin)
+	cp.Y = new(big.Int).Mul(jp.Y, zin3)
 	cp.Y.Mod(cp.Y, curve.P)
 	return
 }
@@ -118,7 +113,7 @@ func (curve *CurveDetail) JacobianAdd(jp1,jp2 *JacobianPoint) (ans*JacobianPoint
 	r1:= new(big.Int).Mul(jp1.Y, jp2.Z)
 	r1.Mul(r1, z2z2)
 	r1.Mod(r1, curve.P)
-	r2:= new(big.Int).Mul(jp2.Y, jp2.Z)
+	r2:= new(big.Int).Mul(jp2.Y, jp1.Z)
 	r2.Mul(r2, z1z1)
 	r2.Mod(r2, curve.P)
 	r3:= new(big.Int).Sub(r2, r1)
@@ -133,6 +128,7 @@ func (curve *CurveDetail) JacobianAdd(jp1,jp2 *JacobianPoint) (ans*JacobianPoint
 	}
 	r3.Lsh(r3, 1)
 	v:= new(big.Int).Mul(t1, i)
+	ans.X= new(big.Int)
 	ans.X.Set(r3)
 	ans.X.Mul(ans.X, ans.X)
 	ans.X.Sub(ans.X, j)
@@ -140,6 +136,7 @@ func (curve *CurveDetail) JacobianAdd(jp1,jp2 *JacobianPoint) (ans*JacobianPoint
 	ans.X.Sub(ans.X, v)
 	ans.X.Mod(ans.X, curve.P)
 
+	ans.Y= new(big.Int)
 	ans.Y.Set(r3)
 	v.Sub(v, ans.X)
 	ans.Y.Mul(ans.Y, v)
@@ -148,6 +145,7 @@ func (curve *CurveDetail) JacobianAdd(jp1,jp2 *JacobianPoint) (ans*JacobianPoint
 	ans.Y.Sub(ans.Y, r1)
 	ans.Y.Mod(ans.Y, curve.P)
 
+	ans.Z= new(big.Int)
 	ans.Z.Add(jp1.Z, jp2.Z)
 	ans.Z.Mul(ans.Z, ans.Z)
 	ans.Z.Sub(ans.Z, z1z1)
@@ -163,7 +161,7 @@ func (curve *CurveDetail)JacobianDouble(jp *JacobianPoint) (ans*JacobianPoint) {
 	yy:=new(big.Int).Mul(jp.Y, jp.Y)
 	yy.Mod(yy, curve.P)
 	u1:=new(big.Int).Sub(jp.X, zz)
-	if u1.Sign() < 0 {
+	if u1.Sign() == -1 {
 		u1.Add(u1, curve.P)
 	}
 	u2:=new(big.Int).Add(jp.X, zz)
@@ -176,22 +174,22 @@ func (curve *CurveDetail)JacobianDouble(jp *JacobianPoint) (ans*JacobianPoint) {
 	v8:=new(big.Int).Lsh(v1, 3)
 	v8.Mod(v8, curve.P)
 
-	ans.X=ans.X.Mul(u1,u1)
+	ans.X=new(big.Int).Mul(u1,u1)
 	ans.X.Sub(ans.X, v8)
 	ans.X.Mod(ans.X, curve.P)
 
-	ans.Z=ans.Z.Add(jp.Y, jp.Z)
+	ans.Z=new(big.Int).Add(jp.Y, jp.Z)
 	ans.Z.Mul(ans.Z, ans.Z)
 	ans.Z.Sub(ans.Z, yy)
 	ans.Z.Sub(ans.Z, zz)
 	ans.Z.Mod(ans.Z, curve.P)
 
-	u1.Lsh(u1, 2)
-	u1.Sub(u1, ans.X)
-	if u1.Sign() < 0 {
-		u1.Add(u1, curve.P)
+	v1.Lsh(v1, 2)
+	v1.Sub(v1, ans.X)
+	if v1.Sign() < 0 {
+		v1.Add(v1, curve.P)
 	}
-	ans.Y=ans.Y.Mul(v1, u1)
+	ans.Y=new(big.Int).Mul(u1, v1)
 	yy.Mul(yy, yy)
 	yy.Lsh(yy, 3)
 	yy.Mod(yy, curve.P)
@@ -226,21 +224,24 @@ func (curve *CurveDetail) Double(cp *CurvePoint)(ans*CurvePoint) {
 }
 
 func (curve *CurveDetail) Mult(cp *CurvePoint, k []byte)(ans*CurvePoint) {
-	nB:=new(JacobianPoint)
-	nB.X=cp.X
-	nB.Y=cp.Y
-	nB.Z=new(big.Int).SetInt64(1)
 	B:=new(JacobianPoint)
+	B.X=cp.X
+	B.Y=cp.Y
+	B.Z=new(big.Int).SetInt64(1)
+	nB:=new(JacobianPoint)
+	nB.X=new(big.Int)
+	nB.Y=new(big.Int)
+	nB.Z=new(big.Int)
 	for _,byte := range k{
 		for i:=0;i<8;i++{
-			B=curve.JacobianDouble(B)
+			nB=curve.JacobianDouble(nB)
 			if byte&0x80 == 0x80{
-				B=curve.JacobianAdd(B,nB)
+				nB=curve.JacobianAdd(B,nB)
 			}
 			byte=byte<<1
 		}
 	}
-	return curve.Jacobian2Curve(B)
+	return curve.Jacobian2Curve(nB)
 }
 func (curve *CurveDetail) BaseMult(k []byte)(ans*CurvePoint) {
 	GP:=new(CurvePoint)
