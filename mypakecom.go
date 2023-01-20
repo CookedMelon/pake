@@ -2,11 +2,12 @@ package main
 
 import (
 	"elliptic"
+	"aes"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
+	"bytes"
 	"math/big"
+	"fmt"
 )
 
 type cd interface {
@@ -30,6 +31,7 @@ type MyPake struct {
 	RandInt []byte//随机数
 	SendP,RecvP *elliptic.CurvePoint
 	w	  *elliptic.CurvePoint//g^ab
+	KeyPack []byte//密钥包
 	Session_key []byte//会话密钥
 }
 func (p*MyPake)initPake(cha int,pw string) (err error) {
@@ -61,8 +63,6 @@ func (p*MyPake)initPake(cha int,pw string) (err error) {
 	p.SendP=new(elliptic.CurvePoint)
 	p.RecvP=new(elliptic.CurvePoint)
 	p.w=new(elliptic.CurvePoint)
-	p.Session_key=make([]byte,32)
-
 	return
 }
 func GetPakes(pw string)(p1,p2 *MyPake,err error) {
@@ -101,6 +101,11 @@ func (p*MyPake)UpdateSelf()(err error){
 	json.Unmarshal(data,&p.SendP)
 	return 
 }
+func (p*MyPake)getKeyPack()(err error){
+	p.KeyPack=make([]byte,16)
+	copy(p.KeyPack,p.w.X.Bytes())
+	return
+}
 func (p*MyPake)UpdateOther(bytes []byte)(err error){
 	var qSend *elliptic.CurvePoint
 	err=json.Unmarshal(bytes,&qSend)
@@ -129,16 +134,36 @@ func (p*MyPake)UpdateOther(bytes []byte)(err error){
 	temp3=p.curve.Add(temp2,temp1)
 	data,err:=json.Marshal(p.curve.Mult(temp3,p.RandInt))
 	json.Unmarshal(data,p.w)
-	
-	Session:=sha256.New()
-	Session.Write(p.PubKey1.X.Bytes())
-	Session.Write(p.PubKey1.Y.Bytes())
-	Session.Write(p.PubKey2.X.Bytes())
-	Session.Write(p.PubKey2.Y.Bytes())
-	Session.Write(p.w.X.Bytes())
-	Session.Write(p.w.Y.Bytes())
-	Session.Write([]byte(p.pw))
-	p.Session_key=Session.Sum(nil)
+	p.getKeyPack()
+	buf := getNewBuf()
+	buf.Write([]byte(p.pw))
+	buf.Write(p.w.X.Bytes())
+	buf.Write(p.w.Y.Bytes())
+	buf.Write(p.PubKey1.X.Bytes())
+	buf.Write(p.PubKey1.Y.Bytes())
+	buf.Write(p.PubKey2.X.Bytes())
+	buf.Write(p.PubKey2.Y.Bytes())
+	n:=0
+	p.Session_key , n , err = getSessionKey(buf)
+	// fmt.Println("n:",n,p.Session_key)
+	AES, Iv := getAES()
+	aes.AES_init_ctx_iv(AES,p.KeyPack,Iv[:])
+	aes.AES_CBC_decrypt_buffer(AES,p.Session_key[:],n)
+
+
+	return 
+}
+func getSessionKey(buf*bytes.Buffer)(session_key []byte,n int,err error){
+	session_key=make([]byte,200)
+	n,err = buf.Read(session_key)
+	return
+}
+func getNewBuf()*bytes.Buffer{
+	return new(bytes.Buffer)
+}
+func getAES()(AES * aes.AES_KEY , Iv [16]byte){
+	Iv = [16]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f}
+	AES = new(aes.AES_KEY)
 	return 
 }
 func main(){
