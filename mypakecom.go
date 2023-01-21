@@ -1,13 +1,14 @@
 package main
 
 import (
-	"elliptic"
-	"aes"
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
-	"bytes"
-	"math/big"
 	"fmt"
+	"math/big"
+
+	"github.com/CookedMelon/pake/src/aes"
+	"github.com/CookedMelon/pake/src/elliptic"
 )
 
 type cd interface {
