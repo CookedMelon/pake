@@ -168,7 +168,7 @@ func getAES()(AES * aes.AES_KEY , Iv [16]byte){
 	return 
 }
 func main(){
-	p1,p2,_:=GetPakes("123456")
+	p1,p2,_:=GetPakes("abcde")
 	err:=p1.UpdateSelf()
 	if err!=nil{
 		fmt.Println(err)
